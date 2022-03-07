@@ -1,0 +1,25 @@
+version: "2"
+services:
+  # Jaeger
+  jaeger-all-in-one:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+      - "6831"
+      - "6832"
+      - "14268"
+      - "14269"
+      - "14250"
+
+  demo-server:
+    build:
+      dockerfile: Dockerfile
+      context: .
+      target: dev
+    environment:
+      - OTEL_EXPORTER_JAEGER_ENDPOINT=jaeger-all-in-one:14268
+    command: ["sleep", "36000"]
+    ports:
+      - "7080"
+    volumes:
+      - ./src:/app
