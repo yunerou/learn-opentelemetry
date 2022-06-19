@@ -1,0 +1,38 @@
+version: "2"
+services:
+  # Jaeger
+  jaeger-all-in-one:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+      - "6831"
+      - "6832"
+      - "14268"
+      - "14269"
+      - "14250"
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.6.0
+    ports:
+      - "4317" # Default endpoint for otlp receiver.
+      - "8889"  # Default endpoint for querying metrics.
+    command:
+      - "/otelcol"
+      - "--config=/conf/otel-collector-config.yaml"
+      - "--mem-ballast-size-mib=683" # Memory Ballast size should be max 1/3 to 1/2 of memory.
+    volumes:
+      - ./docker-config:/conf
+
+  demo-server:
+    build:
+      dockerfile: Dockerfile
+      context: .
+      target: dev
+    environment:
+      - OTEL_COLLECTOR_ENDPOINT=otel-collector:4317
+    command: ["sleep", "36000"]
+    ports:
+      - "7080"
+    volumes:
+      - ./src:/app
+      - ./docker-config:/conf

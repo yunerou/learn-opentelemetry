@@ -27,14 +27,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 
-	"go.opentelemetry.io/otel/exporters/jaeger"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
-	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
-	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
-	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
-	"go.opentelemetry.io/otel/sdk/metric/selector/simple"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -44,8 +37,8 @@ const (
 	id          = 1
 )
 
-func initTraceProvider(ctx context.Context) (func(), error) {
-	otelAgentAddr, ok := os.LookupEnv("OTEL_EXPORTER_JAEGER_ENDPOINT")
+func initProvider(ctx context.Context) (func(), error) {
+	otelAgentAddr, ok := os.LookupEnv("OTEL_COLLECTOR_ENDPOINT")
 	fmt.Println(otelAgentAddr)
 	if !ok {
 		otelAgentAddr = "0.0.0.0:4317"
@@ -57,17 +50,21 @@ func initTraceProvider(ctx context.Context) (func(), error) {
 		attribute.Int64("ID", id),
 	)
 
-	exporter, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint("http://" + otelAgentAddr + "/api/traces")))
+	conn, err := grpc.DialContext(ctx, otelAgentAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
-		log.Fatalf("%s: %v", "Can not connect Jaeger address", err)
-		return func() {}, nil
+		return func() {}, fmt.Errorf("failed to create gRPC connection to collector: %w", err)
 	}
 
+	traceExporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+	if err != nil {
+		return func() {}, fmt.Errorf("failed to create trace exporter: %w", err)
+	}
+
+	bsp := sdktrace.NewBatchSpanProcessor(traceExporter)
 	tracerProvider := sdktrace.NewTracerProvider(
-		// Always be sure to batch in production.
-		sdktrace.WithBatcher(exporter),
-		// Record information about this application in a Resource.
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 		sdktrace.WithResource(traceResource),
+		sdktrace.WithSpanProcessor(bsp),
 	)
 	otel.SetTracerProvider(tracerProvider)
 
@@ -77,48 +74,10 @@ func initTraceProvider(ctx context.Context) (func(), error) {
 	return func() {
 		cxt, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
-		if err := exporter.Shutdown(cxt); err != nil {
+		if err := tracerProvider.Shutdown(cxt); err != nil {
 			otel.Handle(err)
 		}
 	}, nil
-}
-
-func initMetricProvider(ctx context.Context) func() {
-	otelAgentAddr, ok := os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	if !ok {
-		otelAgentAddr = "0.0.0.0:4317"
-	}
-
-	metricClient := otlpmetricgrpc.NewClient(
-		otlpmetricgrpc.WithInsecure(),
-		otlpmetricgrpc.WithEndpoint(otelAgentAddr))
-	metricExp, err := otlpmetric.New(ctx, metricClient)
-	if err != nil {
-		log.Fatalf("%s: %v", "Failed to create the collector metric exporter", err)
-	}
-
-	pusher := controller.New(
-		processor.NewFactory(
-			simple.NewWithHistogramDistribution(),
-			metricExp,
-		),
-		controller.WithExporter(metricExp),
-		controller.WithCollectPeriod(2*time.Second),
-	)
-	global.SetMeterProvider(pusher)
-
-	err = pusher.Start(ctx)
-	if err != nil {
-		log.Fatalf("%s: %v", "Failed to start metric pusher", err)
-	}
-	return func() {
-		cxt, cancel := context.WithTimeout(ctx, time.Second)
-		defer cancel()
-		// pushes any last exports to the receiver
-		if err := pusher.Stop(cxt); err != nil {
-			otel.Handle(err)
-		}
-	}
 }
 
 func main() {
