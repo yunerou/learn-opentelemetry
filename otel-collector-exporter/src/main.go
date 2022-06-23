@@ -27,6 +27,10 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -82,9 +86,9 @@ func initProvider(ctx context.Context) (func(), error) {
 
 func main() {
 	ctx := context.Background()
-	shutdown, err := initTraceProvider(ctx)
+	shutdown, err := initProvider(ctx)
 	if err != nil {
-		panic("Can not start initTraceProvider")
+		panic("Can not start initProvider")
 	}
 	defer shutdown()
 

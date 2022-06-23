@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// reference: https://github.com/open-telemetry/opentelemetry-go/blob/main/example/otel-collector/main.go
 package main
 
 import (

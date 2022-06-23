@@ -18,13 +18,21 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
+	"sync"
+	"syscall"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // name is the Tracer name used to identify this instrumentation library.
@@ -43,19 +51,50 @@ func NewApp(r io.Reader, l *log.Logger) *App {
 
 // Run starts polling users for Fibonacci number requests and writes results.
 func (a *App) Run(ctx context.Context) error {
+	var wg sync.WaitGroup
+	done := a.waitTerminateSignal()
+	breakFlag := false
 	for {
-		// Each execution of the run loop, we should get a new "root" span and context.
-		newCtx, span := otel.Tracer(name).Start(ctx, "Run")
-
-		n, err := a.Poll(newCtx)
-		if err != nil {
-			span.End()
-			return err
+		if breakFlag {
+			break
 		}
 
-		a.Write(newCtx, n)
+		// Each execution of the run loop, we should get a new "root" span and context.
+		newCtx, span := otel.Tracer(name).Start(ctx, "Run")
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			n, err := a.Poll(newCtx)
+			if err != nil {
+				a.l.Println("Poll failed: ", err)
+				span.End()
+				return
+			}
+			a.Write(newCtx, n)
+		}()
+
+		go func() {
+			wg.Done()
+			err := a.HeaderInspect(newCtx)
+			if err != nil {
+				a.l.Println("HeaderInspect failed: ", err)
+				span.End()
+				return
+			}
+		}()
+
 		span.End()
+		wg.Wait()
+
+		select {
+		case <-done:
+			breakFlag = true
+		default:
+			fmt.Println("Make other span")
+		}
+
 	}
+	return nil
 }
 
 // Poll asks a user for input and returns the request.
@@ -102,4 +141,44 @@ func (a *App) Write(ctx context.Context, n uint) {
 	} else {
 		a.l.Printf("Fibonacci(%d) = %d\n", n, f)
 	}
+}
+
+// HeaderInspect check propagation header.
+func (a *App) HeaderInspect(ctx context.Context) error {
+	var span trace.Span
+	_, span = otel.Tracer(name).Start(ctx, "HeaderInspect")
+	defer span.End()
+
+	resp, err := http.Get("https://httpbin.org/headers")
+	if err != nil {
+		a.l.Printf("call http fail")
+		return err
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		a.l.Printf("body read fail")
+		return err
+	}
+	//Convert the body to type string
+	sb := string(body)
+	a.l.Printf(sb)
+	return nil
+}
+
+// waitTerminateSignal ...
+func (a *App) waitTerminateSignal() (done chan bool) {
+
+	sigs := make(chan os.Signal, 1)
+
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	done = make(chan bool, 1)
+
+	go func() {
+		sig := <-sigs
+		a.l.Println("Byeee", sig)
+		done <- true
+	}()
+	return done
 }
