@@ -20,7 +20,6 @@ import (
 	"io"
 	"log"
 	"strconv"
-	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"

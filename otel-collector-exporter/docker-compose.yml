@@ -4,7 +4,7 @@ services:
   jaeger-all-in-one:
     image: jaegertracing/all-in-one:latest
     ports:
-      - "16686:16686"
+      - "16686:16686"   #UI
       - "6831"
       - "6832"
       - "14268"

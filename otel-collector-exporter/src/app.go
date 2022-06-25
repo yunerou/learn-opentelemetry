@@ -31,8 +31,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-
-	"go.opentelemetry.io/otel/propagation"
 )
 
 // name is the Tracer name used to identify this instrumentation library.
@@ -90,6 +88,7 @@ func (a *App) Run(ctx context.Context) error {
 		case <-done:
 			breakFlag = true
 		default:
+			fmt.Println("=======================================")
 			fmt.Println("Make other span")
 		}
 
