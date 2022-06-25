@@ -5,17 +5,23 @@ receivers:
         endpoint: "0.0.0.0:4317"
 processors:
 extensions:
-  health_check: {}
+  health_check:
+  pprof:
+  zpages:
+  memory_ballast:
+    size_mib: 512
 exporters:
   jaeger:
     endpoint: "jaeger-all-in-one:14250"
-    insecure: true
+    tls:
+      insecure: true
+  logging:
+    loglevel: debug
   #prometheus:
   #  endpoint: 0.0.0.0:8889
   #  namespace: "testapp"
-  logging:
 service:
-  extensions: [health_check]
+  extensions: [health_check,pprof,zpages,memory_ballast]
   pipelines:
     traces:
       receivers: [otlp]

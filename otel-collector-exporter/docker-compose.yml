@@ -12,14 +12,17 @@ services:
       - "14250"
 
   otel-collector:
-    image: otel/opentelemetry-collector:0.6.0
+    image: otel/opentelemetry-collector:0.54.0
     ports:
       - "4317" # Default endpoint for otlp receiver.
       - "8889"  # Default endpoint for querying metrics.
+      #- "1888"
+      #- "8888"
+      #- "13133"
+      #- "55670"
     command:
       - "/otelcol"
       - "--config=/conf/otel-collector-config.yaml"
-      - "--mem-ballast-size-mib=683" # Memory Ballast size should be max 1/3 to 1/2 of memory.
     volumes:
       - ./docker-config:/conf
 
